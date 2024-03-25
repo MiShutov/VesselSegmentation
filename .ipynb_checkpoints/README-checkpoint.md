@@ -1,3 +1,0 @@
-# VesselSegmentation
-
-Hello there!
