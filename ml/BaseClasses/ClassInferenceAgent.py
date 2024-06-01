@@ -30,6 +30,11 @@ class InferenceAgent:
             raise InferenceAgentError("_read_params() : bad params")
 
 
+    def load_history(self, path_to_checkpoint):
+        checkpoint = torch.load(path_to_checkpoint)
+        return checkpoint['train_history']
+    
+    
     def load_from_trainer_state(self, path_to_checkpoint):
         checkpoint = torch.load(path_to_checkpoint)
         params = checkpoint["trainer_params"]

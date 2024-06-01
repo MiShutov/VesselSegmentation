@@ -1,5 +1,4 @@
 from ml.models.HessNet import HessNet
-from ml.models.HessNet_new import HessNet as HessNet_new
 from ml.models.unet3d import U_Net, Unet3d
 from ml.models.unet2d import U_Net2d
 from ml.models.JoB_VS import Network
@@ -8,7 +7,7 @@ from ml.transformers_models.UNETR import UNETR
 from ml.models.GenUnet import GenUnet
 
 
-def get_model(model_name, device='cuda'):
+def get_model(model_name):
     if model_name == 'Unet3d_16ch':
         #return(Unet3d(channels=16))
         return(U_Net(channels=16))
@@ -19,12 +18,9 @@ def get_model(model_name, device='cuda'):
     elif model_name == "LittleUnet":
         return(GenUnet(dim=3, in_channels=1, out_channels=1,
                channels=8, depth=1))
-    
-    elif model_name == 'HessNet':
-        return(HessNet(start_scale=[0.8, 0.8, 1.2], device=device))
 
-    elif model_name == 'HessNet_new':
-        return(HessNet_new(in_channels=1, out_channels=1, n_hess_blocks=4))
+    elif model_name == 'HessNet':
+        return(HessNet(in_channels=1, out_channels=1, n_hess_blocks=4))
 
     elif model_name == 'UNETR':
         return(UNETR(in_channels=1, out_channels=1, img_size=(64, 64, 64),

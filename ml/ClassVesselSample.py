@@ -3,7 +3,7 @@ import torchio as tio
 from scripts.utils import get_path
 from scripts.load_and_save import save_vol_as_nii
 
-class Sample:
+class VesselSample:
     def __init__(self, path_to_sample_dir):
         self.path_to_sample_dir = path_to_sample_dir
         self.sample_name = os.path.basename(path_to_sample_dir)

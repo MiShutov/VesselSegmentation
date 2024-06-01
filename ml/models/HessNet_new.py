@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from itertools import combinations_with_replacement
-from transformers_models.modules import UpSampleModule, DownSampleModule, ConvModule
+from ml.transformers_models.modules import UpSampleModule, DownSampleModule, ConvModule
 
 
 class HessianTorch():
@@ -28,48 +28,21 @@ class HessBlock(nn.Module):
                                     kernel_size=5, stride=1, padding=5//2, dilation=1,
                                     bias=False, padding_mode='replicate')
 
+        # self.proj_conv = nn.Sequential(
+        #     nn.Conv3d(in_channels=in_channels,
+        #               out_channels=(in_channels*projection_channels)//2,
+        #               kernel_size=3, stride=1, padding=3//2, dilation=1,
+        #               bias=False, padding_mode='replicate'),
+        #     nn.Conv3d(in_channels=(in_channels*projection_channels)//2,
+        #               out_channels=in_channels*projection_channels,
+        #               kernel_size=3, stride=1, padding=3//2, dilation=1,
+        #               bias=False, padding_mode='replicate'),
+        # )
 
         self.learnable_frangi = nn.Sequential(
             nn.Linear(6 * in_channels * projection_channels, fc_channels, bias=True),
             nn.ReLU(),
             nn.Linear(fc_channels, in_channels, bias=True),
-            act
-        )
-        
-        self.hess = HessianTorch()
-    
-    
-    def forward(self, x):
-        x = self.proj_conv(x)
-        x = self.hess(x).permute(1,3,4,5,0,2)
-        x = torch.flatten(x, start_dim=-2, end_dim=-1)
-        x = self.learnable_frangi(x)
-        x = x.permute(0,4,1,2,3)
-        return x
-
-
-class GenHessBlock(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 multiply_channels=1,
-                 projection_kernel_size=5,
-                 projection_channels=1,
-                 act=nn.Sigmoid()):
-        
-        super(GenHessBlock, self).__init__()
-        self.proj_conv = nn.Conv3d(in_channels=in_channels,
-                                   out_channels=in_channels*projection_channels,
-                                   kernel_size=projection_kernel_size,
-                                   stride=1,
-                                   padding=projection_kernel_size//2,
-                                   dilation=1,
-                                   bias=True,
-                                   padding_mode='replicate')
-
-        self.learnable_frangi = nn.Sequential(
-            nn.Linear(6 * in_channels * projection_channels, 6 * in_channels * projection_channels, bias=True),
-            nn.ReLU(),
-            nn.Linear(6 * in_channels * projection_channels, in_channels * multiply_channels, bias=True),
             act
         )
         
@@ -92,12 +65,6 @@ class HessFeatures(nn.Module):
                  projection_channels=8,
                  out_act=nn.ReLU()):
         super(HessFeatures, self).__init__()    
-        # self.HessBlocks = nn.ModuleList(
-        #     [GenHessBlock(in_channels=in_channels,
-        #                   projection_channels=projection_channels,
-        #                   projection_kernel_size=5,
-        #                   act=out_act) for _ in range(n_hess_blocks)])
-
         self.HessBlocks = nn.ModuleList(
             [HessBlock(in_channels,
                       projection_channels=projection_channels,
@@ -118,14 +85,15 @@ class HessNet(nn.Module):
     def __init__(self,
                  in_channels=1,
                  out_channels=1,
+                 projection_channels=8,
                  n_hess_blocks=4):
         super(HessNet, self).__init__()
         self.hess = HessFeatures(in_channels=in_channels,
                                  n_hess_blocks=n_hess_blocks,
-                                 projection_channels=8,
+                                 projection_channels=projection_channels,
                                  out_act=nn.ReLU())
-            
-        self.conv = ConvModule(in_channels=in_channels*(1+n_hess_blocks),
+        
+        self.out_conv = ConvModule(in_channels=in_channels*(1+n_hess_blocks),
                                out_channels=out_channels,
                                kernel_size=5,
                                norm=None,
@@ -133,84 +101,24 @@ class HessNet(nn.Module):
                                bias=True,
                                padding='auto')
 
-        self.act = nn.Sigmoid()
-
-    
-    def forward(self, x):
-        x = torch.cat([x, self.hess(x)], axis=1)
-        out = self.conv(x)
-        return self.act(out)
-
-
-
-class GenHessNet(nn.Module):
-    def __init__(self,
-                 in_channels=1,
-                 out_channels=1,
-                 n_hess_blocks=4):
-        super(GenHessNet, self).__init__()
-        self.hess = GenHessBlock(in_channels,
-                                 multiply_channels=n_hess_blocks,
-                                 projection_channels=8,
-                                 act=nn.ReLU())
-            
-        self.conv = ConvModule(in_channels=in_channels*(1+n_hess_blocks),
-                               out_channels=out_channels,
-                               kernel_size=5,
-                               norm=None,
-                               act=None,
-                               bias=True,
-                               padding='auto')
+        # self.out_conv = nn.Sequential(
+        #     nn.Conv3d(in_channels=in_channels*(1+n_hess_blocks),
+        #               out_channels=in_channels*(1+n_hess_blocks)//2,
+        #               kernel_size=3, stride=1, padding=3//2, dilation=1,
+        #               bias=False, padding_mode='replicate'),
+        #     nn.ReLU(),
+        #     nn.Conv3d(in_channels=in_channels*(1+n_hess_blocks)//2,
+        #               out_channels=in_channels*projection_channels,
+        #               kernel_size=3, stride=1, padding=3//2, dilation=1,
+        #               bias=False, padding_mode='replicate'),
+        # )
 
         self.act = nn.Sigmoid()
 
     
     def forward(self, x):
         x = torch.cat([x, self.hess(x)], axis=1)
-        out = self.conv(x)
-        return self.act(out)
-
-
-class SeqHessNet(nn.Module):
-    def __init__(self,
-                 in_channels=1,
-                 out_channels=1,
-                 n_hess_blocks=3):
-        super(SeqHessNet, self).__init__()
-        self.hess_1 = HessFeatures(in_channels=in_channels,
-                                   n_hess_blocks=n_hess_blocks,
-                                   projection_channels=8,
-                                   out_act=nn.ReLU())
-
-
-        self.proj_conv = nn.Conv3d(in_channels=in_channels*n_hess_blocks,
-                                   out_channels=in_channels,
-                                   kernel_size=3, stride=1, padding=3//2, dilation=1,
-                                   bias=False, padding_mode='replicate')
-        
-        
-        self.hess_2 = HessFeatures(in_channels=2*in_channels,
-                                   n_hess_blocks=n_hess_blocks,
-                                   projection_channels=8,
-                                   out_act=nn.ReLU())
-        
-        self.out_conv = ConvModule(in_channels=in_channels*(2*in_channels*n_hess_blocks),
-                                   out_channels=out_channels,
-                                   kernel_size=5,
-                                   norm=None,
-                                   act=None,
-                                   bias=True,
-                                   padding='auto')
-
-        self.act = nn.Sigmoid()
-
-    
-    def forward(self, x):
-        h1 = self.hess_1(x)
-        h1 = self.proj_conv(h1)
-        
-        h2 = self.hess_2(torch.cat([x, h1], axis=1))
-        out = self.out_conv(h2)
+        out = self.out_conv(x)
         return self.act(out)
 
 

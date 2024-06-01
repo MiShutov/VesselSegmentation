@@ -16,7 +16,7 @@ class VesselTrainer(Trainer):
         self.is2d = params.get('is2d', False)
         self.stop_test_count = params.get('early_stopping', None)
         self.brain_extractor = params.get('brain_extractor', False)
-        self.neptune_logger = None
+        self.neptune_loger = None
 
 
     def log_train_val_epoch(self, save_path):
@@ -35,8 +35,13 @@ class VesselTrainer(Trainer):
         for _ in range(n_epochs):
             self.recent_epoch+=1
             self._train_epoch(train_loader)
+            
+            if self.scheduler:
+                self.scheduler.step()
+                print("Set learning rate:", self.scheduler.get_last_lr())
+            
             self.log_train_val_epoch(save_path='train')
-            self.loss_history['train'].append(
+            self.train_history['train_loss'].append(
                 self.metric_monitor.get_metric_value('Loss', 'avg')
             )
             
@@ -45,14 +50,16 @@ class VesselTrainer(Trainer):
                     self._val_epoch(val_loader)
 
                 self.log_train_val_epoch(save_path='validation')
-                self.loss_history['val'].append(self.metric_monitor.get_metric_value('Loss', 'avg'))
+                self.train_history['val_loss'].append(self.metric_monitor.get_metric_value('Loss', 'avg'))
 
             if test_loader:
                 with torch.no_grad():
                     self._test_epoch(test_loader)
 
                 self.log_train_val_epoch(save_path='validation')
-                self.loss_history['val'].append(self.metric_monitor.get_metric_value('Loss', 'avg'))
+                
+                for metric_function in self.metric_monitor.metric_functions:
+                    self.train_history[metric_function].append(self.metric_monitor.get_metric_value(metric_function, 'avg').item())
                 
             ### save  weights ###
             path_to_save = f'{self.log_path}/state_dicts'
@@ -87,15 +94,12 @@ class VesselTrainer(Trainer):
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            
-            if self.scheduler:
-                self.scheduler.step()
 
             # metrics 
             self.metric_monitor.update("Loss", loss.item())
-            self.metric_monitor.compute_metrics(
-                output, head_batch, threshold=self.threshold
-            )
+            # self.metric_monitor.compute_metrics(
+            #     output, head_batch, threshold=self.threshold
+            # )
             #print(self.metric_monitor)
             stream.set_description(
                 f"Epoch: {self.recent_epoch}. Train. {self.metric_monitor}"

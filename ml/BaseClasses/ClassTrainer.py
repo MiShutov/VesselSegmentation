@@ -1,4 +1,5 @@
 from typing import Dict
+#from collections import defaultdict
 from datetime import datetime
 import torch
 import numpy as np
@@ -36,7 +37,10 @@ class Trainer:
     def __init__(self, params=None):
         self.params = params
         self.recent_epoch = 0
-        self.loss_history = {'train': [], 'val': []}
+        self.train_history = {
+            "train_loss" : [],
+            "val_loss" : [],
+        }
         self.log_path = None
         if params:
             self._read_params()
@@ -53,11 +57,15 @@ class Trainer:
             self.device = self.params['device']
             self.model = self.params['model'].to(self.device)
             self.optimizer = self.params['optimizer']
-            self.loss_fn = self.params['loss_fn']
+            self.scheduler = self.params.get('scheduler', None)
             
-            self.scheduler = self.params.get('scheduler_fn', None)
+            self.loss_fn = self.params['loss_fn']
             self.metric_functions = self.params.get('metric_functions', {})
+            
             self.metric_monitor = MetricMonitor(metric_functions = self.metric_functions)
+            for metric_function in self.metric_functions:
+                self.train_history.update({metric_function : []})
+            
             if not self.log_path:
                 self.log_path = self.params.get('log_path', None)
             if not self.log_path:
@@ -89,7 +97,7 @@ class Trainer:
         checkpoint = torch.load(path_to_checkpoint)
         self.params = checkpoint["trainer_params"]
         self.recent_epoch = checkpoint['epoch']
-        self.loss_history = checkpoint["loss_history"]
+        self.train_history = checkpoint["train_history"]
         self._read_params()
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -114,7 +122,7 @@ class Trainer:
         checkpoint = {
             "trainer_params": save_params,
             "epoch" : self.recent_epoch,
-            "loss_history" : self.loss_history,
+            "train_history" : self.train_history,
             "optimizer_state_dict" : self.optimizer.state_dict(),
             "model_state_dict": self.model.state_dict()
         }
